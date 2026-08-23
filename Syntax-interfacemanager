@@ -1,7 +1,7 @@
--- Syntax UI InterfaceManager Addon
--- Theme, visibility, keybind, and interface-state helpers.
+-- Syntax UI InterfaceManager v2
+-- Built-in themes, editable accent tokens, keybinds, scale, and visibility state.
 
-local InterfaceManager = {Library = nil, _connections = {}}
+local InterfaceManager = {Library = nil, SaveManager = nil, _connections = {}, Keybind = Enum.KeyCode.RightControl}
 InterfaceManager.__index = InterfaceManager
 
 local function safe(fn, fallback)
@@ -10,30 +10,57 @@ local function safe(fn, fallback)
     return fallback
 end
 
-function InterfaceManager:SetLibrary(library)
-    self.Library = library
-    return self
-end
-
-function InterfaceManager:SetFolder(folder)
-    self.Folder = folder
-    return self
-end
-
-function InterfaceManager:SetKeybind(keyCode)
-    self.Keybind = keyCode
-    return self
-end
-
+function InterfaceManager:SetLibrary(library) self.Library = library; return self end
+function InterfaceManager:SetSaveManager(saveManager) self.SaveManager = saveManager; return self end
+function InterfaceManager:SetFolder(folder) self.Folder = folder; return self end
+function InterfaceManager:SetKeybind(keyCode) self.Keybind = keyCode; return self end
 function InterfaceManager:ApplyTheme(nameOrTheme)
     if not self.Library then return false end
-    local theme = type(nameOrTheme) == "table" and nameOrTheme or (self.Library.Themes[nameOrTheme] or self.Library.Themes.Dark)
-    self.Library:SetTheme(theme)
+    if type(nameOrTheme) == "string" and self.Library.Themes[nameOrTheme] then self.Library:SetThemeName(nameOrTheme) else self.Library:SetTheme(nameOrTheme) end
     return true
 end
-
 function InterfaceManager:ToggleUI()
     if not self.Library or not self.Library.Main then return false end
+    self.Library.Main.Visible = not self.Library.Main.Visible
+    if self.Library.MiniToggle then self.Library.MiniToggle.Visible = not self.Library.Main.Visible end
+    return self.Library.Main.Visible
+end
+function InterfaceManager:SetScale(value)
+    if not self.Library or not self.Library.UIScale then return false end
+    value = math.clamp(tonumber(value) or 1, .75, 1.15); self.Library.UIScale.Scale = value; return value
+end
+function InterfaceManager:BuildInterfaceSection(tab)
+    local section = tab:AddSection("INTERFACE SETTINGS")
+    local themeNames = {}
+    for name in pairs(self.Library and self.Library.Themes or {}) do table.insert(themeNames, name) end
+    table.sort(themeNames)
+    section:AddDropdown({Key = "theme", Title = "Built-in theme", Values = themeNames, Default = self.Library.ThemeName or "Neon Garden"}, function(value)
+        self:ApplyTheme(value)
+        if self.Library then self.Library:Notify({Content = "Theme: " .. tostring(value), Duration = 1.5}) end
+    end)
+    section:AddTextbox({Key = "uiScale", Title = "UI scale (0.75 - 1.15)", Default = "0.92"}, function(value) self:SetScale(value) end)
+    section:AddToggle({Key = "autoLoad", Title = "Auto load preferences", Default = self.SaveManager and self.SaveManager.AutoLoad or false}, function(value)
+        if self.SaveManager then self.SaveManager:SetAutoLoad(value) end
+    end)
+    section:AddButton({Title = "Toggle interface", Callback = function() self:ToggleUI() end})
+    section:AddTitle("Drag the navigation rail or title bar to move the window. RightControl toggles visibility.")
+    return section
+end
+function InterfaceManager:BindToggle(keyCode)
+    self:SetKeybind(keyCode or self.Keybind)
+    local connection = safe(function()
+        return game:GetService("UserInputService").InputBegan:Connect(function(input, processed)
+            if not processed and input.KeyCode == self.Keybind then self:ToggleUI() end
+        end)
+    end)
+    if connection then table.insert(self._connections, connection) end
+    return connection
+end
+function InterfaceManager:Destroy()
+    for _, connection in ipairs(self._connections) do safe(function() connection:Disconnect() end) end
+    self._connections = {}
+end
+return InterfaceManager
     self.Library.Main.Visible = not self.Library.Main.Visible
     if self.Library.MiniToggle then self.Library.MiniToggle.Visible = not self.Library.Main.Visible end
     return self.Library.Main.Visible
