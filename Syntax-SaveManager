@@ -1,0 +1,92 @@
+-- Syntax UI SaveManager Addon
+-- Safe configuration persistence for supported executor environments.
+
+local SaveManager = {Folder = "SyntaxUI", Library = nil, Ignore = {}, _bound = {}}
+SaveManager.__index = SaveManager
+
+local function safe(fn, fallback)
+    local ok, result = pcall(fn)
+    if ok then return result end
+    return fallback
+end
+
+local function can(name)
+    return type(getgenv and getgenv()[name]) == "function" or type(_G[name]) == "function" or type(name) == "string" and type(rawget(_G, name)) == "function"
+end
+
+local function fn(name)
+    return (getgenv and getgenv()[name]) or _G[name]
+end
+
+function SaveManager:SetLibrary(library)
+    self.Library = library
+    return self
+end
+
+function SaveManager:SetFolder(folder)
+    if type(folder) == "string" and folder ~= "" then self.Folder = folder end
+    return self
+end
+
+function SaveManager:IgnoreThemeSettings()
+    self.Ignore.Theme = true
+    return self
+end
+
+function SaveManager:BuildConfigSection(tab)
+    local section = tab:AddSection("CONFIGURATION")
+    section:AddTextbox({Title = "Config name", Placeholder = "default", Default = "default"})
+    section:AddButton({Title = "Save current configuration", Callback = function() self:Save("default") end})
+    section:AddButton({Title = "Load configuration", Callback = function() self:Load("default") end})
+    section:AddButton({Title = "Delete configuration", Callback = function() self:Delete("default") end})
+    return section
+end
+
+function SaveManager:_path(name)
+    return self.Folder .. "/" .. tostring(name):gsub("[^%w_%-]", "_") .. ".json"
+end
+
+function SaveManager:_ensureFolder()
+    if not can("makefolder") or not can("isfolder") then return true end
+    local isfolder = fn("isfolder")
+    if not safe(function() return isfolder(self.Folder) end, false) then
+        return safe(function() fn("makefolder")(self.Folder) return true end, false)
+    end
+    return true
+end
+
+function SaveManager:Save(name)
+    if not self.Library or not can("writefile") then return false, "writefile unavailable" end
+    self:_ensureFolder()
+    local HttpService = game:GetService("HttpService")
+    local data = safe(function() return self.Library:GetConfigData(self.Ignore) end, nil)
+    if not data then return false, "could not serialize controls" end
+    local encoded = safe(function() return HttpService:JSONEncode(data) end, nil)
+    if not encoded then return false, "could not encode configuration" end
+    local ok = safe(function() fn("writefile")(self:_path(name or "default"), encoded) return true end, false)
+    if self.Library then self.Library:Notify({Content = ok and "Configuration saved" or "Save failed", Duration = 2}) end
+    return ok, ok and nil or "write failed"
+end
+
+function SaveManager:Load(name)
+    if not self.Library or not can("readfile") or not can("isfile") then return false, "readfile/isfile unavailable" end
+    local path = self:_path(name or "default")
+    if not safe(function() return fn("isfile")(path) end, false) then return false, "configuration not found" end
+    local encoded = safe(function() return fn("readfile")(path) end, nil)
+    local data = encoded and safe(function() return game:GetService("HttpService"):JSONDecode(encoded) end, nil)
+    if not data then return false, "invalid configuration" end
+    local ok = safe(function() self.Library:SetConfigData(data, self.Ignore) return true end, false)
+    if self.Library then self.Library:Notify({Content = ok and "Configuration loaded" or "Load failed", Duration = 2}) end
+    return ok
+end
+
+function SaveManager:Delete(name)
+    if not can("delfile") or not can("isfile") then return false, "delfile/isfile unavailable" end
+    local path = self:_path(name or "default")
+    if not safe(function() return fn("isfile")(path) end, false) then return false, "configuration not found" end
+    local ok = safe(function() fn("delfile")(path) return true end, false)
+    if self.Library then self.Library:Notify({Content = ok and "Configuration deleted" or "Delete failed", Duration = 2}) end
+    return ok
+end
+
+return SaveManager
