@@ -1,7 +1,7 @@
--- Syntax UI SaveManager Addon
--- Safe configuration persistence for supported executor environments.
+-- Syntax UI SaveManager v2
+-- Safe JSON persistence with optional automatic loading.
 
-local SaveManager = {Folder = "SyntaxUI", Library = nil, Ignore = {}, _bound = {}}
+local SaveManager = {Folder = "SyntaxUI", Config = "default", AutoLoad = false, Library = nil, Ignore = {}}
 SaveManager.__index = SaveManager
 
 local function safe(fn, fallback)
@@ -9,31 +9,63 @@ local function safe(fn, fallback)
     if ok then return result end
     return fallback
 end
-
-local function can(name)
-    return type(getgenv and getgenv()[name]) == "function" or type(_G[name]) == "function" or type(name) == "string" and type(rawget(_G, name)) == "function"
+local function env(name)
+    local g = (getgenv and getgenv()) or _G
+    return g and g[name]
 end
+local function available(name) return type(env(name)) == "function" end
 
-local function fn(name)
-    return (getgenv and getgenv()[name]) or _G[name]
+function SaveManager:SetLibrary(library) self.Library = library; return self end
+function SaveManager:SetFolder(folder) if type(folder) == "string" and folder ~= "" then self.Folder = folder end; return self end
+function SaveManager:SetConfig(name) if type(name) == "string" and name ~= "" then self.Config = name end; return self end
+function SaveManager:SetAutoLoad(enabled) self.AutoLoad = enabled == true; return self end
+function SaveManager:IgnoreThemeSettings() self.Ignore.Theme = true; return self end
+function SaveManager:_path(name) return self.Folder .. "/" .. tostring(name or self.Config):gsub("[^%w_%-]", "_") .. ".json" end
+function SaveManager:_ensureFolder()
+    if not available("makefolder") or not available("isfolder") then return true end
+    if not safe(function() return env("isfolder")(self.Folder) end, false) then return safe(function() env("makefolder")(self.Folder); return true end, false) end
+    return true
 end
-
-function SaveManager:SetLibrary(library)
-    self.Library = library
-    return self
+function SaveManager:Save(name)
+    if not self.Library or not available("writefile") then return false, "writefile unavailable" end
+    self:SetConfig(name or self.Config); self:_ensureFolder()
+    local data = safe(function() return self.Library:GetConfigData(self.Ignore) end, nil)
+    local encoded = data and safe(function() return game:GetService("HttpService"):JSONEncode(data) end, nil)
+    if not encoded then return false, "serialization failed" end
+    local ok = safe(function() env("writefile")(self:_path(), encoded); return true end, false)
+    self.Library:Notify({Content = ok and "Saved: " .. self.Config or "Save failed", Duration = 2})
+    return ok
 end
-
-function SaveManager:SetFolder(folder)
-    if type(folder) == "string" and folder ~= "" then self.Folder = folder end
-    return self
+function SaveManager:Load(name)
+    if not self.Library or not available("readfile") or not available("isfile") then return false, "readfile/isfile unavailable" end
+    self:SetConfig(name or self.Config); local path = self:_path()
+    if not safe(function() return env("isfile")(path) end, false) then return false, "config not found" end
+    local raw = safe(function() return env("readfile")(path) end, nil)
+    local data = raw and safe(function() return game:GetService("HttpService"):JSONDecode(raw) end, nil)
+    if not data then return false, "invalid config" end
+    local ok = safe(function() return self.Library:SetConfigData(data, self.Ignore) end, false)
+    self.Library:Notify({Content = ok and "Loaded: " .. self.Config or "Load failed", Duration = 2})
+    return ok
 end
-
-function SaveManager:IgnoreThemeSettings()
-    self.Ignore.Theme = true
-    return self
+function SaveManager:Delete(name)
+    if not available("delfile") or not available("isfile") then return false, "delfile/isfile unavailable" end
+    self:SetConfig(name or self.Config); local path = self:_path()
+    if not safe(function() return env("isfile")(path) end, false) then return false, "config not found" end
+    local ok = safe(function() env("delfile")(path); return true end, false)
+    if self.Library then self.Library:Notify({Content = ok and "Deleted: " .. self.Config or "Delete failed", Duration = 2}) end
+    return ok
 end
-
 function SaveManager:BuildConfigSection(tab)
+    local section = tab:AddSection("PREFERENCES")
+    local nameBox = section:AddTextbox({Key = "configName", Title = "Config name", Placeholder = "default", Default = self.Config}, function(value) self:SetConfig(value) end)
+    section:AddToggle({Key = "autoLoad", Title = "Auto load config", Default = self.AutoLoad}, function(value) self:SetAutoLoad(value) end)
+    section:AddButton({Title = "Save current config", Callback = function() self:Save(nameBox.Value()) end})
+    section:AddButton({Title = "Load selected config", Callback = function() self:Load(nameBox.Value()) end})
+    section:AddButton({Title = "Delete selected config", Callback = function() self:Delete(nameBox.Value()) end})
+    if self.AutoLoad then task.defer(function() self:Load(self.Config) end) end
+    return section
+end
+return SaveManager
     local section = tab:AddSection("CONFIGURATION")
     section:AddTextbox({Title = "Config name", Placeholder = "default", Default = "default"})
     section:AddButton({Title = "Save current configuration", Callback = function() self:Save("default") end})
