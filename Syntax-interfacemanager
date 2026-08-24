@@ -61,36 +61,3 @@ function InterfaceManager:Destroy()
     self._connections = {}
 end
 return InterfaceManager
-    self.Library.Main.Visible = not self.Library.Main.Visible
-    if self.Library.MiniToggle then self.Library.MiniToggle.Visible = not self.Library.Main.Visible end
-    return self.Library.Main.Visible
-end
-
-function InterfaceManager:BuildInterfaceSection(tab)
-    local section = tab:AddSection("INTERFACE")
-    section:AddDropdown({Title = "Theme", Values = {"Dark"}, Default = "Dark"}, function(value)
-        self:ApplyTheme(value)
-    end)
-    section:AddButton({Title = "Toggle UI", Callback = function() self:ToggleUI() end})
-    section:AddTitle("Use the configured keybind or call InterfaceManager:ToggleUI() from your controller.")
-    return section
-end
-
-function InterfaceManager:BindToggle(keyCode)
-    self:SetKeybind(keyCode)
-    local connection = safe(function()
-        return game:GetService("UserInputService").InputBegan:Connect(function(input, processed)
-            if processed then return end
-            if input.KeyCode == self.Keybind then self:ToggleUI() end
-        end)
-    end)
-    if connection then table.insert(self._connections, connection) end
-    return connection
-end
-
-function InterfaceManager:Destroy()
-    for _, connection in ipairs(self._connections) do safe(function() connection:Disconnect() end) end
-    self._connections = {}
-end
-
-return InterfaceManager
