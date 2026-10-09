@@ -1,68 +1,187 @@
--- Syntax UI SaveManager v2
--- Safe JSON persistence with optional automatic loading.
+--[[
+    Syntax UI  -  SaveManager  (Fluent-compatible API)
+    Saves / loads every Toggle, Slider, Dropdown, Input and Keybind registered in Library.Options.
 
-local SaveManager = {Folder = "SyntaxUI", Config = "default", AutoLoad = false, Library = nil, Ignore = {}}
-SaveManager.__index = SaveManager
+        local SaveManager = loadstring(game:HttpGet("<raw link>/SyntaxSaveManager.lua"))()
+        SaveManager:SetLibrary(Syntax)
+        SaveManager:IgnoreThemeSettings()
+        SaveManager:SetIgnoreIndexes({})
+        SaveManager:SetFolder("SyntaxHub")
+        SaveManager:BuildConfigSection(Tabs.Settings)
+        SaveManager:LoadAutoloadConfig()
 
-local function safe(fn, fallback)
-    local ok, result = pcall(fn)
-    if ok then return result end
-    return fallback
+    Needs executor file functions: writefile, readfile, isfile, isfolder, makefolder, listfiles.
+]]
+
+local HttpService = game:GetService("HttpService")
+local TAG = "[Syntax SaveManager]"
+
+local Manager = {
+    Folder = "SyntaxUI",
+    Ignore = {},
+    Library = nil,
+}
+
+local function hasFS()
+    return type(writefile) == "function" and type(readfile) == "function" and type(isfolder) == "function"
+        and type(makefolder) == "function" and type(listfiles) == "function" and type(isfile) == "function"
 end
-local function env(name)
-    local g = (getgenv and getgenv()) or _G
-    return g and g[name]
-end
-local function available(name) return type(env(name)) == "function" end
 
-function SaveManager:SetLibrary(library) self.Library = library; return self end
-function SaveManager:SetFolder(folder) if type(folder) == "string" and folder ~= "" then self.Folder = folder end; return self end
-function SaveManager:SetConfig(name) if type(name) == "string" and name ~= "" then self.Config = name end; return self end
-function SaveManager:SetAutoLoad(enabled) self.AutoLoad = enabled == true; return self end
-function SaveManager:IgnoreThemeSettings() self.Ignore.Theme = true; return self end
-function SaveManager:_path(name) return self.Folder .. "/" .. tostring(name or self.Config):gsub("[^%w_%-]", "_") .. ".json" end
-function SaveManager:_ensureFolder()
-    if not available("makefolder") or not available("isfolder") then return true end
-    if not safe(function() return env("isfolder")(self.Folder) end, false) then return safe(function() env("makefolder")(self.Folder); return true end, false) end
+-- per-type save / load
+local Parsers = {
+    Toggle   = { save = function(idx, o) return { type = "Toggle", idx = idx, value = o.Value } end,
+                 load = function(idx, d, o) o:SetValue(d.value and true or false) end },
+    Slider   = { save = function(idx, o) return { type = "Slider", idx = idx, value = o.Value } end,
+                 load = function(idx, d, o) o:SetValue(tonumber(d.value)) end },
+    Input    = { save = function(idx, o) return { type = "Input", idx = idx, value = o.Value } end,
+                 load = function(idx, d, o) o:SetValue(d.value) end },
+    Keybind  = { save = function(idx, o) return { type = "Keybind", idx = idx, value = o.Value } end,
+                 load = function(idx, d, o) o:SetValue(d.value) end },
+    Dropdown = { save = function(idx, o)
+                    local v = o.Value
+                    if o.Multi then
+                        local list = {}
+                        for k, on in pairs(v) do if on then list[#list + 1] = k end end
+                        v = list
+                    end
+                    return { type = "Dropdown", idx = idx, value = v, multi = o.Multi }
+                 end,
+                 load = function(idx, d, o) o:SetValue(d.value) end },
+}
+
+function Manager:SetLibrary(lib) self.Library = lib end
+function Manager:SetFolder(folder)
+    self.Folder = folder
+    self:_BuildFolders()
+end
+function Manager:SetIgnoreIndexes(list)
+    for _, k in ipairs(list or {}) do self.Ignore[k] = true end
+end
+function Manager:IgnoreThemeSettings()
+    self:SetIgnoreIndexes({ "InterfaceTheme", "InterfaceScale", "MenuKeybind" })
+end
+
+function Manager:_BuildFolders()
+    if not hasFS() then return end
+    pcall(function()
+        if not isfolder(self.Folder) then makefolder(self.Folder) end
+        if not isfolder(self.Folder .. "/settings") then makefolder(self.Folder .. "/settings") end
+    end)
+end
+
+function Manager:Save(name)
+    if not hasFS() then warn(TAG, "executor has no file functions") return false, "no filesystem" end
+    if not name or name == "" then return false, "no name" end
+    local data = { objects = {} }
+    for idx, o in pairs(self.Library.Options) do
+        local p = Parsers[o.Type]
+        if p and not self.Ignore[idx] then
+            local ok, entry = pcall(p.save, idx, o)
+            if ok then data.objects[#data.objects + 1] = entry end
+        end
+    end
+    local ok, json = pcall(function() return HttpService:JSONEncode(data) end)
+    if not ok then warn(TAG, "encode failed:", json) return false, "encode failed" end
+    self:_BuildFolders()
+    local wok, werr = pcall(writefile, self.Folder .. "/settings/" .. name .. ".json", json)
+    if not wok then warn(TAG, "write failed:", werr) return false, "write failed" end
     return true
 end
-function SaveManager:Save(name)
-    if not self.Library or not available("writefile") then return false, "writefile unavailable" end
-    self:SetConfig(name or self.Config); self:_ensureFolder()
-    local data = safe(function() return self.Library:GetConfigData(self.Ignore) end, nil)
-    local encoded = data and safe(function() return game:GetService("HttpService"):JSONEncode(data) end, nil)
-    if not encoded then return false, "serialization failed" end
-    local ok = safe(function() env("writefile")(self:_path(), encoded); return true end, false)
-    self.Library:Notify({Content = ok and "Saved: " .. self.Config or "Save failed", Duration = 2})
-    return ok
+
+function Manager:Load(name)
+    if not hasFS() then return false, "no filesystem" end
+    local path = self.Folder .. "/settings/" .. name .. ".json"
+    if not isfile(path) then return false, "file not found" end
+    local ok, data = pcall(function() return HttpService:JSONDecode(readfile(path)) end)
+    if not ok or type(data) ~= "table" then warn(TAG, "decode failed for", name) return false, "decode failed" end
+    for _, d in ipairs(data.objects or {}) do
+        local o = self.Library.Options[d.idx]
+        local p = Parsers[d.type]
+        if o and p and not self.Ignore[d.idx] then
+            local lok, lerr = pcall(p.load, d.idx, d, o)
+            if not lok then warn(TAG, "failed to load", d.idx, lerr) end
+        end
+    end
+    return true
 end
-function SaveManager:Load(name)
-    if not self.Library or not available("readfile") or not available("isfile") then return false, "readfile/isfile unavailable" end
-    self:SetConfig(name or self.Config); local path = self:_path()
-    if not safe(function() return env("isfile")(path) end, false) then return false, "config not found" end
-    local raw = safe(function() return env("readfile")(path) end, nil)
-    local data = raw and safe(function() return game:GetService("HttpService"):JSONDecode(raw) end, nil)
-    if not data then return false, "invalid config" end
-    local ok = safe(function() return self.Library:SetConfigData(data, self.Ignore) end, false)
-    self.Library:Notify({Content = ok and "Loaded: " .. self.Config or "Load failed", Duration = 2})
-    return ok
+
+function Manager:RefreshConfigList()
+    if not hasFS() then return {} end
+    local out = {}
+    local ok, files = pcall(listfiles, self.Folder .. "/settings")
+    if not ok then return out end
+    for _, f in ipairs(files) do
+        local name = f:match("([^/\\]+)%.json$")
+        if name and name ~= "autoload" then out[#out + 1] = name end
+    end
+    return out
 end
-function SaveManager:Delete(name)
-    if not available("delfile") or not available("isfile") then return false, "delfile/isfile unavailable" end
-    self:SetConfig(name or self.Config); local path = self:_path()
-    if not safe(function() return env("isfile")(path) end, false) then return false, "config not found" end
-    local ok = safe(function() env("delfile")(path); return true end, false)
-    if self.Library then self.Library:Notify({Content = ok and "Deleted: " .. self.Config or "Delete failed", Duration = 2}) end
-    return ok
+
+function Manager:GetAutoloadConfig()
+    local path = self.Folder .. "/settings/autoload.txt"
+    if hasFS() and isfile(path) then return readfile(path) end
+    return "none"
 end
-function SaveManager:BuildConfigSection(tab)
-    local section = tab:AddSection("PREFERENCES")
-    local nameBox = section:AddTextbox({Key = "configName", Title = "Config name", Placeholder = "default", Default = self.Config}, function(value) self:SetConfig(value) end)
-    section:AddToggle({Key = "autoLoad", Title = "Auto load config", Default = self.AutoLoad}, function(value) self:SetAutoLoad(value) end)
-    section:AddButton({Title = "Save current config", Callback = function() self:Save(nameBox.Value()) end})
-    section:AddButton({Title = "Load selected config", Callback = function() self:Load(nameBox.Value()) end})
-    section:AddButton({Title = "Delete selected config", Callback = function() self:Delete(nameBox.Value()) end})
-    if self.AutoLoad then task.defer(function() self:Load(self.Config) end) end
-    return section
+
+function Manager:LoadAutoloadConfig()
+    local name = self:GetAutoloadConfig()
+    if name and name ~= "none" and name ~= "" then
+        local ok, err = self:Load(name)
+        if self.Library and self.Library.Notify then
+            self.Library:Notify({ Title = "Config", Content = ok and ("Auto loaded " .. name) or ("Autoload failed: " .. tostring(err)), Duration = 4 })
+        end
+    end
 end
-return SaveManager
+
+function Manager:BuildConfigSection(tab)
+    assert(self.Library, "SaveManager: call SetLibrary first")
+    local Lib = self.Library
+    self:_BuildFolders()
+    tab:AddSection("Configuration")
+
+    local nameInput = tab:AddInput("SaveManager_ConfigName", { Title = "Config name", Placeholder = "my config" })
+    local list = tab:AddDropdown("SaveManager_ConfigList", { Title = "Config list", Values = self:RefreshConfigList(), Default = nil })
+
+    local function note(msg) Lib:Notify({ Title = "Config", Content = msg, Duration = 3.5 }) end
+    local function refresh()
+        local l = self:RefreshConfigList()
+        list:SetValues(l)
+        if l[1] then list:SetValue(l[1], true) end
+    end
+
+    tab:AddButton({ Title = "Create config", Callback = function()
+        local name = nameInput.Value
+        if not name or name:gsub(" ", "") == "" then note("Invalid config name (empty)") return end
+        local ok, err = self:Save(name)
+        note(ok and ("Created " .. name) or ("Failed: " .. tostring(err)))
+        refresh()
+    end })
+    tab:AddButton({ Title = "Load config", Callback = function()
+        local name = list.Value
+        if not name or name == "" then note("Select a config first") return end
+        local ok, err = self:Load(name)
+        note(ok and ("Loaded " .. name) or ("Failed: " .. tostring(err)))
+    end })
+    tab:AddButton({ Title = "Overwrite config", Callback = function()
+        local name = list.Value
+        if not name or name == "" then note("Select a config first") return end
+        local ok, err = self:Save(name)
+        note(ok and ("Overwrote " .. name) or ("Failed: " .. tostring(err)))
+    end })
+    tab:AddButton({ Title = "Refresh list", Callback = refresh })
+
+    local auto = tab:AddParagraph({ Title = "Autoload", Content = "Current autoload config: " .. self:GetAutoloadConfig() })
+    tab:AddButton({ Title = "Set as autoload", Callback = function()
+        local name = list.Value
+        if not name or name == "" then note("Select a config first") return end
+        if hasFS() then pcall(writefile, self.Folder .. "/settings/autoload.txt", name) end
+        auto:SetDesc("Current autoload config: " .. name)
+        note("Set " .. name .. " to autoload")
+    end })
+
+    refresh()
+    self.Ignore["SaveManager_ConfigName"] = true
+    self.Ignore["SaveManager_ConfigList"] = true
+end
+
+return Manager
