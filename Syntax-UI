@@ -1,4 +1,4 @@
--- Syntax UI v1.1 (rebuilt) - Fluent-compatible
+-- Syntax UI v1.2 (rebuilt) - Fluent-compatible
 -- Elements: Section, Paragraph, Button, Toggle, Slider, Dropdown (single/multi), Input, Keybind
 -- Library : CreateWindow, Notify, SetTheme, Destroy, Options, Themes, Windows, MinimizeKeybind
 -- Window  : AddTab, SelectTab, Minimize, Restore, SetScale, Destroy
@@ -7,6 +7,8 @@ local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
 local CoreGui = game:GetService("CoreGui")
+local RunService = game:GetService("RunService")
+local Lighting = game:GetService("Lighting")
 local LocalPlayer = Players.LocalPlayer
 
 local TAG = "[Syntax UI]"
@@ -16,7 +18,7 @@ if env.SyntaxUI_Instance and env.SyntaxUI_Instance.Destroy then
 end
 
 local Library = {
-	Version = "1.1.0",
+	Version = "1.2.0",
 	Options = {},
 	Windows = {},
 	Unloaded = false,
@@ -123,6 +125,8 @@ local function Juice(btn, baseKey, hoverKey)
 	btn.MouseButton1Up:Connect(function() Tw(sc, 0.25, { Scale = 1 }, Enum.EasingStyle.Back) end)
 end
 
+local function R(n) return math.floor(n + 0.5) end
+
 local function IsPress(i)
 	return i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch
 end
@@ -206,7 +210,7 @@ function Library:Notify(cfg)
 		Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BorderSizePixel = 0,
 		Position = UDim2.fromOffset(290, 0), ZIndex = 301,
 	}, wrap)
-	Themed(card, "BackgroundColor3", "bg2"); Round(card, 10); Outline(card, "accent", 1.5, 0.15)
+	Themed(card, "BackgroundColor3", "bg2"); Round(card, 10); Outline(card, "hi", 1.6, 0.05)
 	New("UIPadding", { PaddingLeft = UDim.new(0, 12), PaddingRight = UDim.new(0, 12), PaddingTop = UDim.new(0, 8), PaddingBottom = UDim.new(0, 8) }, card)
 	New("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 2) }, card)
 	local t = Label(card, tostring(cfg.Title or "Notice"), 13, "hi", FB)
@@ -239,7 +243,7 @@ end
 local function Card(container, height, auto)
 	local f = New("Frame", { Size = UDim2.new(1, 0, 0, height or 0), BorderSizePixel = 0, LayoutOrder = NextOrder(container) }, container)
 	if auto then f.AutomaticSize = Enum.AutomaticSize.Y end
-	Themed(f, "BackgroundColor3", "panel"); Round(f, 8); Outline(f, "accent", 1, 0.7)
+	Themed(f, "BackgroundColor3", "panel"); Round(f, 8); Outline(f, "hi", 1.2, 0.5)
 	return f
 end
 
@@ -264,7 +268,7 @@ local function Fire(obj, v)
 end
 
 local function BaseOption(kind, idx, cfg)
-	local o = { Type = kind, Value = nil, Callback = cfg.Callback, _changed = {} }
+	local o = { Type = kind, Title = cfg.Title, Value = nil, Callback = cfg.Callback, _changed = {} }
 	function o:OnChanged(fn) self._changed[#self._changed + 1] = fn end
 	if idx then Library.Options[idx] = o end
 	return o
@@ -330,7 +334,7 @@ function Elements:AddButton(cfg)
 	cfg = cfg or {}
 	local h = (cfg.Description and cfg.Description ~= "") and 46 or 34
 	local b = New("TextButton", { Text = "", AutoButtonColor = false, Size = UDim2.new(1, 0, 0, h), BorderSizePixel = 0, LayoutOrder = NextOrder(self.Container) }, self.Container)
-	Themed(b, "BackgroundColor3", "panel"); Round(b, 8); Outline(b, "accent", 1, 0.55)
+	Themed(b, "BackgroundColor3", "panel"); Round(b, 8); Outline(b, "hi", 1.2, 0.4)
 	Juice(b, "panel", "panel2")
 	local tl = Header(b, cfg, 0)
 	b.MouseButton1Click:Connect(function() Safe(cfg.Callback) end)
@@ -417,7 +421,7 @@ function Elements:AddInput(idx, cfg)
 		BorderSizePixel = 0, Position = UDim2.fromOffset(8, 24), Size = UDim2.new(1, -16, 0, 22), TextXAlignment = Enum.TextXAlignment.Left,
 	}, card)
 	Themed(box, "BackgroundColor3", "bg"); Themed(box, "TextColor3", "text"); Themed(box, "PlaceholderColor3", "dim")
-	Round(box, 6); Outline(box, "accent", 1, 0.5)
+	Round(box, 6); Outline(box, "hi", 1, 0.4)
 	New("UIPadding", { PaddingLeft = UDim.new(0, 6), PaddingRight = UDim.new(0, 6) }, box)
 
 	local I = BaseOption("Input", idx, cfg)
@@ -562,7 +566,7 @@ function Elements:AddKeybind(idx, cfg)
 		Text = "", AutoButtonColor = false, AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -12, 0.5, 0),
 		Size = UDim2.fromOffset(92, 26), BorderSizePixel = 0,
 	}, card)
-	Themed(b, "BackgroundColor3", "bg"); Round(b, 6); Outline(b, "accent", 1, 0.5)
+	Themed(b, "BackgroundColor3", "bg"); Round(b, 6); Outline(b, "hi", 1, 0.4)
 	local txt = Label(b, "", 12, "hi", FB, Enum.TextXAlignment.Center)
 	txt.Size = UDim2.fromScale(1, 1)
 
@@ -599,9 +603,13 @@ function Elements:AddKeybind(idx, cfg)
 	return K
 end
 
--- ===================== window =====================
-local Window = {}
-Window.__index = Window
+-- ===================== shared visuals =====================
+local function GradientFill(parent)
+	local fill = New("Frame", { Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0, ZIndex = 0 }, parent)
+	local g = New("UIGradient", { Rotation = 90, Color = ColorSequence.new(Palette.bg2, Palette.bg) }, fill)
+	Refreshers[#Refreshers + 1] = function() if g.Parent then g.Color = ColorSequence.new(Palette.bg2, Palette.bg) end end
+	return fill
+end
 
 local function MakeDraggable(handle, target, onTap)
 	local dragging, start, orig, moved = false, nil, nil, 0
@@ -627,89 +635,495 @@ local function MakeDraggable(handle, target, onTap)
 	end)
 end
 
+-- ===================== pill (minimized button + floating toggles) =====================
+function Library:MakePill(cfg)
+	cfg = cfg or {}
+	local gui = self:_Gui()
+	local W, Hh = cfg.Width or 172, 48
+	local pill = { Visible = false, on = nil }
+	local baseScale = cfg.Scale or 1
+
+	local shell = New("Frame", {
+		AnchorPoint = Vector2.new(0.5, 0.5), Size = UDim2.fromOffset(W, Hh),
+		Position = cfg.Position or UDim2.fromOffset(100, 200), BackgroundTransparency = 1, BorderSizePixel = 0,
+		ZIndex = cfg.ZIndex or 20, Visible = false,
+	}, gui)
+	Round(shell, 24)
+	local st = New("UIStroke", { Thickness = 2, Transparency = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, shell)
+	Themed(st, "Color", "hi")
+	local sc = New("UIScale", { Scale = 0.5 * baseScale }, shell)
+	local body = New("CanvasGroup", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, BorderSizePixel = 0, GroupTransparency = 1, Active = true }, shell)
+	Round(body, 24)
+	GradientFill(body)
+
+	local grip = New("Frame", { Size = UDim2.fromOffset(26, Hh), BackgroundTransparency = 1, Active = true }, body)
+	for col = 0, 1 do
+		for row = 0, 2 do
+			local d = New("Frame", { Size = UDim2.fromOffset(3, 3), BackgroundTransparency = 0.3, BorderSizePixel = 0, Position = UDim2.fromOffset(9 + col * 6, 16 + row * 7) }, grip)
+			Themed(d, "BackgroundColor3", "dim"); Round(d, 3)
+		end
+	end
+
+	local rightPad = cfg.OnExpand and 48 or 10
+	local tbtn = New("TextButton", {
+		Text = "", AutoButtonColor = false, BackgroundTransparency = 1,
+		Position = UDim2.fromOffset(26, 0), Size = UDim2.fromOffset(W - 26 - rightPad, Hh),
+	}, body)
+	local sw
+	local nameX = 8
+	if cfg.ShowSwitch then
+		sw = MakeSwitch(tbtn, 42, 24)
+		sw.track.AnchorPoint = Vector2.new(0, 0.5); sw.track.Position = UDim2.new(0, 2, 0.5, 0)
+		nameX = 54
+	end
+	local nameLbl = Label(tbtn, tostring(cfg.Name or ""), 12, "text", FB)
+	nameLbl.Position = UDim2.fromOffset(nameX, 8); nameLbl.Size = UDim2.new(1, -nameX, 0, 16); nameLbl.TextTruncate = Enum.TextTruncate.AtEnd
+	local stateLbl = Label(tbtn, tostring(cfg.SubText or ""), 10, "dim", FM)
+	stateLbl.Position = UDim2.fromOffset(nameX, 24); stateLbl.Size = UDim2.new(1, -nameX, 0, 14)
+	tbtn.MouseButton1Click:Connect(function() Safe(cfg.OnToggle or cfg.OnExpand) end)
+
+	if cfg.OnExpand then
+		local eb = New("TextButton", {
+			Text = "", AutoButtonColor = false, AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -9, 0.5, 0),
+			Size = UDim2.fromOffset(30, 30), BorderSizePixel = 0,
+		}, body)
+		Themed(eb, "BackgroundColor3", "panel"); Round(eb, 15); Juice(eb, "panel", "panel2")
+		local ic = New("Frame", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(12, 11), BackgroundTransparency = 1 }, eb)
+		Round(ic, 3); Outline(ic, "text", 1.6, 0)
+		local bar = New("Frame", { Position = UDim2.fromOffset(0, 2), Size = UDim2.new(1, 0, 0, 2), BorderSizePixel = 0 }, ic)
+		Themed(bar, "BackgroundColor3", "text")
+		eb.MouseButton1Click:Connect(function() Safe(cfg.OnExpand) end)
+	end
+
+	MakeDraggable(grip, shell)
+
+	pill.Shell = shell
+	function pill:SetState(on)
+		on = on and true or false
+		if self.on == on then return end
+		self.on = on
+		if sw then sw.set(on) end
+		stateLbl.Text = on and "ON" or "OFF"
+	end
+	function pill:SetName(s) nameLbl.Text = tostring(s) end
+	function pill:SetSub(s) stateLbl.Text = tostring(s) end
+	function pill:SetScale(v)
+		baseScale = tonumber(v) or 1
+		if self.Visible then Tw(sc, 0.15, { Scale = baseScale }) end
+	end
+	function pill:Show()
+		self.Visible = true
+		shell.Visible = true
+		sc.Scale = 0.5 * baseScale
+		Tw(sc, 0.55, { Scale = baseScale }, Enum.EasingStyle.Back)
+		Tw(body, 0.35, { GroupTransparency = 0 })
+		Tw(st, 0.35, { Transparency = 0 })
+	end
+	function pill:Hide()
+		self.Visible = false
+		Tw(sc, 0.3, { Scale = 0.6 * baseScale })
+		Tw(body, 0.25, { GroupTransparency = 1 })
+		Tw(st, 0.25, { Transparency = 1 })
+		task.delay(0.32, function() if not pill.Visible then shell.Visible = false end end)
+	end
+	function pill:Destroy() shell:Destroy() end
+	return pill
+end
+
+-- ===================== intro: bokeh loader + use-at-your-own-risk =====================
+function Library:_RunIntro(cfg, onDone)
+	cfg = cfg or {}
+	local gui = self:_Gui()
+	local vp = self:_Viewport()
+	local rng = Random.new()
+	local fade, fadeGoal = 0, 1
+	local progShown, progGoal = 0, 0
+	local started = false
+	local lib = self
+
+	local blur
+	pcall(function()
+		blur = Instance.new("BlurEffect")
+		blur.Name = "SyntaxIntroBlur"; blur.Size = 0; blur.Parent = Lighting
+		Tw(blur, 0.9, { Size = cfg.Blur or 8 })
+	end)
+
+	-- bokeh (transparent, the game stays visible)
+	local layer = New("Frame", { Name = "SyntaxBokeh", Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 1, ClipsDescendants = true }, gui)
+	local dimmer = New("Frame", { Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.new(0, 0, 0), BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 1 }, layer)
+	local colors = {
+		Color3.fromRGB(242, 142, 52), Color3.fromRGB(190, 96, 24), Color3.fromRGB(255, 196, 110),
+		Color3.fromRGB(150, 82, 36), Color3.fromRGB(255, 224, 168),
+	}
+	local bokeh = {}
+	for i = 1, 18 do
+		local sz = rng:NextInteger(60, 240)
+		local col = colors[rng:NextInteger(1, #colors)]
+		local f = New("Frame", {
+			AnchorPoint = Vector2.new(0.5, 0.5), Size = UDim2.fromOffset(sz, sz), BackgroundColor3 = col,
+			BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 2,
+		}, layer)
+		New("UICorner", { CornerRadius = UDim.new(1, 0) }, f)
+		local s = New("UIStroke", { Color = col, Thickness = 1.5, Transparency = 1 }, f)
+		bokeh[i] = {
+			f = f, st = s, bx = rng:NextNumber(0.02, 0.98), by = rng:NextNumber(0.02, 0.98),
+			ax = rng:NextNumber(12, 46), ay = rng:NextNumber(12, 46), sp = rng:NextNumber(0.15, 0.45),
+			ph = rng:NextNumber(0, 6.28), base = rng:NextNumber(0.70, 0.84), sbase = rng:NextNumber(0.50, 0.72),
+		}
+	end
+
+	-- card
+	local LW, LH = 390, 300
+	local fit = math.min(1, (vp.X - 20) / LW, (vp.Y - 20) / LH)
+	local shell = New("Frame", {
+		AnchorPoint = Vector2.new(0.5, 0.5), Size = UDim2.fromOffset(LW, LH), Position = UDim2.fromScale(0.5, 0.5),
+		BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 30,
+	}, gui)
+	Round(shell, 18)
+	local lstroke = New("UIStroke", { Thickness = 2.5, Transparency = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, shell)
+	Themed(lstroke, "Color", "hi")
+	local lscale = New("UIScale", { Scale = 0.9 * fit }, shell)
+	local canvas = New("CanvasGroup", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, BorderSizePixel = 0, GroupTransparency = 1, Active = true }, shell)
+	Round(canvas, 18)
+	GradientFill(canvas)
+
+	local function Page()
+		return New("CanvasGroup", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, BorderSizePixel = 0 }, canvas)
+	end
+	local function Center(l, y, h)
+		l.Position = UDim2.fromOffset(0, y); l.Size = UDim2.new(1, 0, 0, h)
+	end
+
+	-- loading page
+	local loadPage = Page()
+	local spinHold = New("Frame", { AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 24), Size = UDim2.fromOffset(46, 46), BackgroundTransparency = 1 }, loadPage)
+	local ringBack = New("Frame", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1 }, spinHold)
+	Round(ringBack, 46); Outline(ringBack, "accent", 3, 0.75)
+	local ringFront = New("Frame", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1 }, spinHold)
+	Round(ringFront, 46)
+	local spinStroke = Outline(ringFront, "hi", 3, 0)
+	local spinGrad = New("UIGradient", {
+		Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(0.5, 0.2),
+			NumberSequenceKeypoint.new(0.72, 1), NumberSequenceKeypoint.new(1, 1),
+		}),
+	}, spinStroke)
+
+	local lt = Label(loadPage, tostring(cfg.Title or "free script by Yuan"), 23, "text", FB, Enum.TextXAlignment.Center); Center(lt, 82, 30)
+	local ls = Label(loadPage, tostring(cfg.Subtitle or "join official server"), 13, "dim", FM, Enum.TextXAlignment.Center); Center(ls, 114, 18)
+
+	local copyBtn = New("TextButton", {
+		Text = "Copy invite link", TextSize = 13, Font = FB, AutoButtonColor = false, BorderSizePixel = 0,
+		AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 142), Size = UDim2.fromOffset(200, 34),
+	}, loadPage)
+	Themed(copyBtn, "BackgroundColor3", "accent"); Themed(copyBtn, "TextColor3", "text")
+	Round(copyBtn, 17); Juice(copyBtn, "accent", "hi")
+	local copyToken = 0
+	copyBtn.MouseButton1Click:Connect(function()
+		local clip = setclipboard or toclipboard or (Clipboard and Clipboard.set)
+		local ok = false
+		if clip and cfg.Link then
+			local s, err = pcall(clip, cfg.Link)
+			ok = s
+			if not s then warn(TAG, "clipboard error:", err) end
+		else
+			warn(TAG, "no clipboard function. Invite link:", cfg.Link)
+		end
+		copyToken = copyToken + 1
+		local my = copyToken
+		copyBtn.Text = ok and "Copied!" or "Link printed in console"
+		copyBtn.TextColor3 = Color3.fromRGB(16, 12, 10)
+		Tw(copyBtn, 0.2, { BackgroundColor3 = ok and Palette.good or Palette.warn })
+		task.delay(1.6, function()
+			if copyToken ~= my or not copyBtn.Parent then return end
+			copyBtn.Text = "Copy invite link"
+			copyBtn.TextColor3 = Palette.text
+			Tw(copyBtn, 0.3, { BackgroundColor3 = Palette.accent })
+		end)
+	end)
+
+	local progTrack = New("Frame", { AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 206), Size = UDim2.fromOffset(300, 6), BorderSizePixel = 0 }, loadPage)
+	Themed(progTrack, "BackgroundColor3", "panel"); Round(progTrack, 3)
+	local progFill = New("Frame", { Size = UDim2.new(0, 0, 1, 0), BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0 }, progTrack)
+	Round(progFill, 3)
+	New("UIGradient", { Color = ColorSequence.new(Palette.accent, Palette.hi) }, progFill)
+	local progStep = Label(loadPage, "Starting...", 11, "dim", FM)
+	progStep.Position = UDim2.new(0.5, -150, 0, 218); progStep.Size = UDim2.fromOffset(220, 16)
+	local progPct = Label(loadPage, "0%", 11, "hi", FB, Enum.TextXAlignment.Right)
+	progPct.Position = UDim2.new(0.5, 70, 0, 218); progPct.Size = UDim2.fromOffset(80, 16)
+	local foot = Label(loadPage, tostring(cfg.Footer or "Syntax UI"), 10, "dim", FM, Enum.TextXAlignment.Center)
+	foot.Position = UDim2.new(0, 0, 1, -26); foot.Size = UDim2.new(1, 0, 0, 14); foot.TextTransparency = 0.35
+
+	-- warning page
+	local warnPage = Page()
+	warnPage.Visible = false; warnPage.GroupTransparency = 1
+	New("UIListLayout", {
+		SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 10),
+		HorizontalAlignment = Enum.HorizontalAlignment.Center, VerticalAlignment = Enum.VerticalAlignment.Center,
+	}, warnPage)
+	local badge = New("Frame", { Size = UDim2.fromOffset(40, 40), BackgroundTransparency = 0.82, BorderSizePixel = 0, LayoutOrder = 1 }, warnPage)
+	Themed(badge, "BackgroundColor3", "warn"); Round(badge, 40); Outline(badge, "warn", 2, 0.1)
+	local mark = Label(badge, "!", 22, "warn", FB, Enum.TextXAlignment.Center); mark.Size = UDim2.fromScale(1, 1)
+	local wt = Label(warnPage, tostring(cfg.WarnTitle or "Use at your own risk"), 18, "warn", FB, Enum.TextXAlignment.Center)
+	wt.Size = UDim2.new(1, -24, 0, 22); wt.LayoutOrder = 2
+	local wb = Label(warnPage, tostring(cfg.WarnBody or "This script automates gameplay actions.\nThe author is not responsible for any bans."), 12, "dim", FM, Enum.TextXAlignment.Center)
+	wb.TextWrapped = true; wb.Size = UDim2.new(1, -32, 0, 44); wb.LayoutOrder = 3
+	local startBtn = New("TextButton", {
+		Text = "START", TextSize = 15, Font = FB, TextColor3 = Color3.fromRGB(18, 12, 8), AutoButtonColor = false,
+		BorderSizePixel = 0, Size = UDim2.fromOffset(150, 40), LayoutOrder = 4,
+	}, warnPage)
+	Themed(startBtn, "BackgroundColor3", "hi"); Round(startBtn, 20); Juice(startBtn, "hi", "warn")
+
+	-- frame loop
+	local t0 = os.clock()
+	local conn = RunService.RenderStepped:Connect(function(dt)
+		local t = os.clock() - t0
+		fade = fade + (fadeGoal - fade) * (1 - math.exp(-dt * 2.6))
+		for _, b in ipairs(bokeh) do
+			b.f.Position = UDim2.new(b.bx, math.sin(t * b.sp + b.ph) * b.ax, b.by, math.cos(t * b.sp * 0.8 + b.ph) * b.ay)
+			local pulse = math.sin(t * b.sp * 2 + b.ph) * 0.03
+			b.f.BackgroundTransparency = 1 - (1 - (b.base + pulse)) * fade
+			b.st.Transparency = 1 - (1 - b.sbase) * fade
+		end
+		dimmer.BackgroundTransparency = 1 - 0.04 * fade
+		spinGrad.Rotation = (t * 330) % 360
+		progShown = progShown + (progGoal - progShown) * (1 - math.exp(-dt * 7))
+		progFill.Size = UDim2.new(math.clamp(progShown, 0, 1), 0, 1, 0)
+		progPct.Text = string.format("%d%%", math.floor(progShown * 100 + 0.5))
+		lstroke.Thickness = 2.6 + math.sin(t * 2) * 0.25
+	end)
+	Conns[#Conns + 1] = conn
+
+	local function cleanup()
+		pcall(function() conn:Disconnect() end)
+		pcall(function() layer:Destroy() end)
+		pcall(function() shell:Destroy() end)
+		if blur then pcall(function() blur:Destroy() end) end
+	end
+	local function gone() return lib.Unloaded or not gui.Parent end
+
+	startBtn.MouseButton1Click:Connect(function()
+		if started then return end
+		started = true
+		fadeGoal = 0
+		Tw(lscale, 0.55, { Scale = 1.08 * fit }, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
+		Tw(canvas, 0.45, { GroupTransparency = 1 }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+		Tw(lstroke, 0.45, { Transparency = 1 }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+		if blur then Tw(blur, 0.8, { Size = 0 }) end
+		task.delay(0.4, function() if not gone() then Safe(onDone) end end)
+		task.delay(1.3, cleanup)
+	end)
+
+	local steps = cfg.Steps or {
+		{ "Loading modules...", 0.2 }, { "Building interface...", 0.45 }, { "Binding hooks...", 0.7 },
+		{ "Almost there...", 0.9 }, { "Ready!", 1 },
+	}
+	task.spawn(function()
+		task.wait(0.05)
+		Tw(lscale, 0.75, { Scale = fit }, Enum.EasingStyle.Back)
+		Tw(canvas, 0.6, { GroupTransparency = 0 })
+		Tw(lstroke, 0.6, { Transparency = 0 })
+		task.wait(0.5)
+		for _, s in ipairs(steps) do
+			if gone() then return end
+			progStep.Text = s[1]; progGoal = s[2]
+			task.wait(0.55)
+		end
+		task.wait(0.35)
+		if gone() then return end
+		Tw(loadPage, 0.3, { GroupTransparency = 1 })
+		task.wait(0.3)
+		loadPage.Visible = false
+		warnPage.Position = UDim2.fromOffset(0, 10)
+		warnPage.Visible = true
+		Tw(warnPage, 0.45, { GroupTransparency = 0, Position = UDim2.fromOffset(0, 0) })
+	end)
+end
+
+-- ===================== window =====================
+local Window = {}
+Window.__index = Window
+
 function Library:CreateWindow(cfg)
 	cfg = cfg or {}
 	local gui = self:_Gui()
 	local vp = self:_Viewport()
 	local W = cfg.Width or 580
-	local H = cfg.Height or 400
+	local H = cfg.Height or 420
 	if typeof(cfg.Size) == "UDim2" then W, H = cfg.Size.X.Offset, cfg.Size.Y.Offset end
 	W = math.max(300, math.min(W, vp.X - 24))
 	H = math.max(220, math.min(H, vp.Y - 24))
 
-	local win = setmetatable({ Tabs = {}, Library = self }, Window)
+	local win = setmetatable({ Tabs = {}, Library = self, Opened = false, Minimized = false }, Window)
+	local userScale = 1
+	local layoutLive, animBusy = false, false
+	local pos = { x = R(vp.X / 2), y = R(vp.Y / 2) }
+	local goal = { x = pos.x, y = pos.y }
 
-	local main = New("Frame", {
-		Name = "Main", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5),
-		Size = UDim2.fromOffset(W, H), BorderSizePixel = 0, ClipsDescendants = true,
+	local shell = New("Frame", {
+		Name = "Main", AnchorPoint = Vector2.new(0.5, 0.5), Size = UDim2.fromOffset(W, H),
+		Position = UDim2.fromOffset(pos.x, pos.y), BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 10, Visible = false,
 	}, gui)
-	Themed(main, "BackgroundColor3", "bg"); Round(main, 10); Outline(main, "accent", 1.5, 0.2)
-	local scale = New("UIScale", { Scale = 1 }, main)
-	win.Main, win.Scale = main, scale
+	Round(shell, 14)
+	local stroke = New("UIStroke", { Thickness = 2.6, Transparency = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, shell)
+	Themed(stroke, "Color", "hi")
+	local scale = New("UIScale", { Scale = 0.88 }, shell)
+	local canvas = New("CanvasGroup", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, BorderSizePixel = 0, GroupTransparency = 1, Active = true }, shell)
+	Round(canvas, 14)
+	GradientFill(canvas)
+	win.Main, win.Scale = shell, scale
 
-	local top = New("Frame", { Size = UDim2.new(1, 0, 0, 38), BackgroundTransparency = 1 }, main)
-	local title = tostring(cfg.Title or "Syntax")
+	-- title bar
+	local top = New("Frame", { Size = UDim2.new(1, 0, 0, 42), BorderSizePixel = 0, ZIndex = 5, Active = true }, canvas)
+	Themed(top, "BackgroundColor3", "bg2"); top.BackgroundTransparency = 0.35
+	local topLine = New("Frame", { Position = UDim2.new(0, 0, 1, -1), Size = UDim2.new(1, 0, 0, 1), BackgroundTransparency = 0.35, BorderSizePixel = 0 }, top)
+	Themed(topLine, "BackgroundColor3", "hi")
+	local logo = New("Frame", { Position = UDim2.fromOffset(13, 15), Size = UDim2.fromOffset(12, 12), BorderSizePixel = 0 }, top)
+	Themed(logo, "BackgroundColor3", "hi"); Round(logo, 12)
+	local logoGlow = New("UIStroke", { Thickness = 3, Transparency = 0.7 }, logo)
+	Themed(logoGlow, "Color", "hi")
+	local tl = Label(top, tostring(cfg.Title or "Syntax"), 14, "text", FB)
+	tl.Position = UDim2.fromOffset(34, 6); tl.Size = UDim2.new(1, -100, 0, 17); tl.ZIndex = 6
 	local sub = cfg.SubTitle or cfg.Subtitle
-	if sub and sub ~= "" then title = title .. "  |  " .. tostring(sub) end
-	local tl = Label(top, title, 14, "text", FB)
-	tl.Position = UDim2.fromOffset(12, 0); tl.Size = UDim2.new(1, -56, 1, 0)
-	tl.TextTruncate = Enum.TextTruncate.AtEnd
+	local sl = Label(top, tostring(sub or ""), 10, "hi", FM)
+	sl.Position = UDim2.fromOffset(34, 23); sl.Size = UDim2.new(1, -100, 0, 13); sl.ZIndex = 6
 
 	local minBtn = New("TextButton", {
-		Text = "-", Font = FB, TextSize = 18, AutoButtonColor = false, AnchorPoint = Vector2.new(1, 0.5),
-		Position = UDim2.new(1, -8, 0.5, 0), Size = UDim2.fromOffset(28, 28), BorderSizePixel = 0,
+		Text = "", AutoButtonColor = false, AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -8, 0.5, 0),
+		Size = UDim2.fromOffset(28, 28), BorderSizePixel = 0, ZIndex = 6,
 	}, top)
-	Themed(minBtn, "BackgroundColor3", "panel"); Themed(minBtn, "TextColor3", "text"); Round(minBtn, 8)
-	Juice(minBtn, "panel", "panel2")
+	Themed(minBtn, "BackgroundColor3", "panel"); Round(minBtn, 9); Juice(minBtn, "panel", "panel2")
+	local dash = New("Frame", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(12, 2), BorderSizePixel = 0, ZIndex = 7 }, minBtn)
+	Themed(dash, "BackgroundColor3", "text")
 
+	-- sidebar + content
 	local sbW = math.floor(math.min(140, W * 0.28))
 	local sidebar = New("ScrollingFrame", {
-		Position = UDim2.fromOffset(8, 42), Size = UDim2.new(0, sbW, 1, -50), BackgroundTransparency = 1, BorderSizePixel = 0,
+		Position = UDim2.fromOffset(8, 50), Size = UDim2.new(0, sbW, 1, -58), BackgroundTransparency = 1, BorderSizePixel = 0,
 		ScrollBarThickness = 0, CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y,
-	}, main)
+	}, canvas)
 	New("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 4) }, sidebar)
-
 	local content = New("Frame", {
-		Position = UDim2.fromOffset(sbW + 16, 42), Size = UDim2.new(1, -(sbW + 24), 1, -50), BackgroundTransparency = 1, ClipsDescendants = true,
-	}, main)
+		Position = UDim2.fromOffset(sbW + 16, 50), Size = UDim2.new(1, -(sbW + 24), 1, -58), BackgroundTransparency = 1, ClipsDescendants = true,
+	}, canvas)
 
-	local mini = New("TextButton", {
-		Text = "S", Font = FB, TextSize = 18, AutoButtonColor = false, Size = UDim2.fromOffset(44, 44),
-		Position = UDim2.fromOffset(20, 80), BorderSizePixel = 0, Visible = false, ZIndex = 50,
-	}, gui)
-	Themed(mini, "BackgroundColor3", "accent"); Themed(mini, "TextColor3", "text"); Round(mini, 12); Outline(mini, "hi", 1.5, 0.2)
-	win.Mini = mini
+	-- minimized pill
+	local pill = self:MakePill({
+		Name = tostring(cfg.Title or "Syntax"), SubText = "tap to open", Width = 198,
+		Position = UDim2.fromOffset(R(vp.X / 8), R(vp.Y / 2)),
+		OnExpand = function() win:Restore() end,
+	})
+	win.Pill = pill
 
-	function win:Minimize() main.Visible = false; mini.Visible = true; self.Minimized = true end
-	function win:Restore() main.Visible = true; mini.Visible = false; self.Minimized = false end
+	-- open / minimize / restore
+	function win:Open()
+		if self.Opened then return end
+		self.Opened = true
+		shell.Visible = true
+		Tw(scale, 0.6, { Scale = userScale }, Enum.EasingStyle.Back)
+		Tw(canvas, 0.45, { GroupTransparency = 0 })
+		Tw(stroke, 0.45, { Transparency = 0 })
+		layoutLive = true
+	end
+	function win:Minimize()
+		if animBusy or self.Minimized or not self.Opened then return end
+		animBusy, self.Minimized, layoutLive = true, true, false
+		local p = pill.Shell.Position
+		Tw(shell, 0.46, { Position = UDim2.fromOffset(p.X.Offset, p.Y.Offset) }, Enum.EasingStyle.Quint, Enum.EasingDirection.InOut)
+		Tw(scale, 0.46, { Scale = 0.16 }, Enum.EasingStyle.Quint, Enum.EasingDirection.InOut)
+		Tw(canvas, 0.34, { GroupTransparency = 1 })
+		Tw(stroke, 0.34, { Transparency = 1 })
+		task.delay(0.28, function() pill:Show() end)
+		task.delay(0.5, function() shell.Visible = false; animBusy = false end)
+	end
+	function win:Restore()
+		if animBusy or not self.Minimized then return end
+		animBusy, self.Minimized = true, false
+		pill:Hide()
+		local p = pill.Shell.Position
+		shell.Position = UDim2.fromOffset(p.X.Offset, p.Y.Offset)
+		scale.Scale = 0.16; canvas.GroupTransparency = 1; stroke.Transparency = 1
+		shell.Visible = true
+		Tw(shell, 0.52, { Position = UDim2.fromOffset(R(pos.x), R(pos.y)) })
+		Tw(scale, 0.58, { Scale = userScale }, Enum.EasingStyle.Back)
+		Tw(canvas, 0.4, { GroupTransparency = 0 })
+		Tw(stroke, 0.4, { Transparency = 0 })
+		task.delay(0.6, function() layoutLive = true; animBusy = false end)
+	end
 	function win:Toggle() if self.Minimized then self:Restore() else self:Minimize() end end
-	function win:SetScale(v) scale.Scale = math.clamp(tonumber(v) or 1, 0.5, 1.5) end
-	function win:SetMiniToggle(on) if self.Minimized then mini.Visible = on and true or false end end
+	function win:SetScale(v)
+		userScale = math.clamp(tonumber(v) or 1, 0.5, 1.5)
+		if self.Opened and not self.Minimized and not animBusy then Tw(scale, 0.2, { Scale = userScale }) end
+	end
+	function win:SetMiniToggle() end
 	function win:MiniNotify(c) Library:Notify(c) end
 	function win:Destroy() Library:Destroy() end
 
 	minBtn.MouseButton1Click:Connect(function() win:Minimize() end)
-	MakeDraggable(top, main)
-	MakeDraggable(mini, mini, function() win:Restore() end)
 	Bind(UserInputService.InputBegan, function(i, gp)
 		if gp then return end
 		if i.UserInputType == Enum.UserInputType.Keyboard and i.KeyCode == Library.MinimizeKeybind then win:Toggle() end
 	end)
 
+	-- smooth drag
+	local dragging, dStart, dOrig = false, nil, nil
+	top.InputBegan:Connect(function(i)
+		if IsPress(i) and layoutLive then
+			dragging = true; dStart = i.Position; dOrig = Vector2.new(goal.x, goal.y)
+			local c
+			c = i.Changed:Connect(function()
+				if i.UserInputState == Enum.UserInputState.End then dragging = false; c:Disconnect() end
+			end)
+		end
+	end)
+	Bind(UserInputService.InputChanged, function(i)
+		if dragging and IsMove(i) then
+			local d = i.Position - dStart
+			local v = Library:_Viewport()
+			goal.x = math.clamp(dOrig.X + d.X, 60, math.max(60, v.X - 60))
+			goal.y = math.clamp(dOrig.Y + d.Y, 40, math.max(40, v.Y - 40))
+		end
+	end)
+
+	-- frame loop: smooth follow + glow
+	local t0 = os.clock()
+	Bind(RunService.RenderStepped, function(dt)
+		local t = os.clock() - t0
+		if layoutLive and shell.Visible then
+			local a = 1 - math.exp(-dt * 20)
+			pos.x = pos.x + (goal.x - pos.x) * a
+			pos.y = pos.y + (goal.y - pos.y) * a
+			shell.Position = UDim2.fromOffset(R(pos.x), R(pos.y))
+		end
+		if shell.Visible then
+			logoGlow.Transparency = 0.6 + math.sin(t * 2.4) * 0.2
+			stroke.Thickness = 2.6 + math.sin(t * 2) * 0.25
+		end
+	end)
+
+	-- tabs
 	local function paintTabs()
 		for _, t in ipairs(win.Tabs) do
 			local active = (t == win.Current)
-			t.Btn.BackgroundColor3 = active and Palette.accent or Palette.panel
-			t.Btn.BackgroundTransparency = active and 0 or 0.35
+			Tw(t.Btn, 0.25, { BackgroundColor3 = active and Palette.accent or Palette.panel, BackgroundTransparency = active and 0 or 0.35 })
 		end
 	end
-	Refreshers[#Refreshers + 1] = function() if main.Parent then paintTabs() end end
+	Refreshers[#Refreshers + 1] = function() if shell.Parent then paintTabs() end end
 
 	function win:SelectTab(t)
 		if type(t) == "number" then t = self.Tabs[t] end
-		if not t then return end
+		if not t or t == self.Current then return end
 		self.Current = t
-		for _, o in ipairs(self.Tabs) do o.Page.Visible = (o == t) end
+		for _, o in ipairs(self.Tabs) do
+			if o == t then
+				o.Group.Position = UDim2.fromOffset(0, 12)
+				o.Group.GroupTransparency = 1
+				o.Group.Visible = true
+				Tw(o.Group, 0.38, { GroupTransparency = 0, Position = UDim2.fromOffset(0, 0) })
+			else
+				o.Group.Visible = false
+			end
+		end
 		paintTabs()
 	end
 
@@ -719,19 +1133,20 @@ function Library:CreateWindow(cfg)
 		local btn = New("TextButton", {
 			Text = "", AutoButtonColor = false, Size = UDim2.new(1, 0, 0, 32), BorderSizePixel = 0, LayoutOrder = #self.Tabs + 1,
 		}, sidebar)
-		Themed(btn, "BackgroundColor3", "panel"); Round(btn, 8)
+		Themed(btn, "BackgroundColor3", "panel"); btn.BackgroundTransparency = 0.35; Round(btn, 8)
 		local bl = Label(btn, tostring(c.Title or "Tab"), 12, "text", FB)
 		bl.Position = UDim2.fromOffset(10, 0); bl.Size = UDim2.new(1, -14, 1, 0); bl.TextTruncate = Enum.TextTruncate.AtEnd
 
+		local group = New("CanvasGroup", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, BorderSizePixel = 0, Visible = false }, content)
 		local page = New("ScrollingFrame", {
 			Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, BorderSizePixel = 0, ScrollBarThickness = 3,
-			CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y, Visible = false,
-		}, content)
-		page.ScrollBarImageColor3 = Palette.accent
+			CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y,
+		}, group)
+		page.ScrollBarImageColor3 = Palette.hi
 		New("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 6) }, page)
 		New("UIPadding", { PaddingRight = UDim.new(0, 6), PaddingBottom = UDim.new(0, 6) }, page)
 
-		local tab = setmetatable({ Title = c.Title, Window = self, Container = page, Page = page, Btn = btn }, Elements)
+		local tab = setmetatable({ Title = c.Title, Window = self, Container = page, Page = page, Group = group, Btn = btn }, Elements)
 		self.Tabs[#self.Tabs + 1] = tab
 		btn.MouseButton1Click:Connect(function() self:SelectTab(tab) end)
 		if #self.Tabs == 1 then self:SelectTab(tab) else paintTabs() end
@@ -739,7 +1154,109 @@ function Library:CreateWindow(cfg)
 	end
 
 	self.Windows[#self.Windows + 1] = win
+
+	if cfg.Intro then
+		self:_RunIntro(type(cfg.Intro) == "table" and cfg.Intro or {}, function() win:Open() end)
+	else
+		win:Open()
+	end
 	return win
+end
+
+-- ===================== floating toggles (user-configurable) =====================
+function Library:BuildFloatingToggleSection(tab, slotCount)
+	slotCount = slotCount or 3
+	local Lib = self
+	local vp = self:_Viewport()
+	local targetMap = {}
+
+	local function collect()
+		targetMap = {}
+		local idxs = {}
+		for idx, o in pairs(Lib.Options) do
+			if o.Type == "Toggle" and not tostring(idx):match("^FT%d") then idxs[#idxs + 1] = idx end
+		end
+		table.sort(idxs, function(a, b) return tostring(a) < tostring(b) end)
+		local names = {}
+		for _, idx in ipairs(idxs) do
+			local nm = tostring(Lib.Options[idx].Title or idx)
+			if targetMap[nm] then nm = nm .. " [" .. tostring(idx) .. "]" end
+			targetMap[nm] = idx
+			names[#names + 1] = nm
+		end
+		table.sort(names)
+		if #names == 0 then names = { "None" } end
+		return names
+	end
+
+	tab:AddSection("Floating Toggles")
+	tab:AddParagraph({
+		Title = "Custom floating toggles",
+		Content = "Each slot is a draggable on-screen switch. Pick any toggle from the list, give it your own label, and flip it without opening the menu. Grab the dots to move it.",
+	})
+
+	local slots = {}
+	local names = collect()
+	for n = 1, slotCount do
+		local slot = { n = n }
+		slot.pill = Lib:MakePill({
+			Name = "Toggle " .. n, SubText = "OFF", Width = 176, ShowSwitch = true, ZIndex = 20 + n,
+			Position = UDim2.fromOffset(R(vp.X / 8), R(vp.Y / 2 + (n - 1) * 58)),
+			OnToggle = function()
+				local o = slot.target and Lib.Options[slot.target]
+				if o and o.SetValue then o:SetValue(not o.Value) end
+			end,
+		})
+		slots[#slots + 1] = slot
+
+		function slot.refresh()
+			local o = slot.target and Lib.Options[slot.target]
+			local custom = slot.labelIn and slot.labelIn.Value or ""
+			local label = (custom ~= "" and custom) or (o and tostring(o.Title or slot.target)) or "Pick a toggle"
+			slot.pill:SetName(label)
+			if o then slot.pill:SetState(o.Value) end
+			local show = slot.enable and slot.enable.Value and o ~= nil
+			if show and not slot.pill.Visible then slot.pill:Show()
+			elseif not show and slot.pill.Visible then slot.pill:Hide() end
+		end
+
+		tab:AddSection("Slot " .. n)
+		slot.enable = tab:AddToggle("FT" .. n .. "_Enabled", {
+			Title = "Show floating toggle " .. n, Default = false, Callback = function() slot.refresh() end,
+		})
+		slot.targetDd = tab:AddDropdown("FT" .. n .. "_Target", {
+			Title = "Controls", Description = "Which toggle this button flips", Values = names,
+			Callback = function(v) slot.target = targetMap[v]; slot.refresh() end,
+		})
+		slot.labelIn = tab:AddInput("FT" .. n .. "_Label", {
+			Title = "Custom label (empty = use the toggle's name)", Placeholder = "e.g. Farm", Finished = true,
+			Callback = function() slot.refresh() end,
+		})
+		slot.sizeSl = tab:AddSlider("FT" .. n .. "_Size", {
+			Title = "Button size", Default = 1, Min = 0.7, Max = 1.4, Rounding = 2,
+			Callback = function(v) slot.pill:SetScale(v) end,
+		})
+	end
+
+	tab:AddButton({
+		Title = "Refresh toggle list", Description = "Re-scan features (use after anything new loads)",
+		Callback = function()
+			local fresh = collect()
+			for _, s in ipairs(slots) do s.targetDd:SetValues(fresh) end
+			Lib:Notify({ Title = "Floating Toggles", Content = #fresh .. " toggle(s) available.", Duration = 2 })
+		end,
+	})
+
+	-- keep every floating switch in sync with the real toggle
+	Bind(RunService.Heartbeat, function()
+		for _, s in ipairs(slots) do
+			if s.pill.Visible and s.target then
+				local o = Lib.Options[s.target]
+				if o then s.pill:SetState(o.Value) end
+			end
+		end
+	end)
+	return slots
 end
 
 return Library
